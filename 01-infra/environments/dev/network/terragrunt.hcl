@@ -1,4 +1,4 @@
-# Component: network (VPC + subnet + Cloud NAT + firewall IAP)
+# Component: network (VNet + subnet + NAT Gateway + NSG/ASG + private DNS PostgreSQL)
 # State terpisah → perubahan di sini tidak men-scan component lain.
 #
 # SEMUA variabel configurable di-pass eksplisit di sini (AD-2: parameterisasi penuh).
@@ -16,46 +16,63 @@ locals {
   env = read_terragrunt_config(find_in_parent_folders("env.hcl"))
 }
 
+# Resource group harus ada lebih dulu (nama diambil dari env.hcl).
+dependencies {
+  paths = ["../resource-group"]
+}
+
 inputs = {
   # --- Identifiers ---
-  network_name      = "vpc-course-dev"
-  subnet_name       = "subnet-course-dev"
-  router_name       = "router-course-dev"
-  nat_name          = "nat-course-dev"
-  nat_ip_name       = "address-nat-dev"
-  firewall_iap_name = "allow-iap"
+  network_name          = "vnet-course-dev"
+  subnet_name           = "snet-course-dev"
+  aks_subnet_name       = "snet-aks-dev"
+  postgres_subnet_name  = "snet-postgres-dev"
+  nat_name              = "nat-course-dev"
+  nat_ip_name           = "pip-nat-dev"
+  nsg_name              = "nsg-course-dev"
+  asg_ssh_name          = "asg-ssh"
+  asg_webhook_name      = "asg-webhook"
+  firewall_ssh_name     = "allow-ssh"
   firewall_webhook_name = "allow-github-webhook"
 
+  # NAT Gateway & IP-nya zonal — samakan dengan zone node AKS.
+  zone = local.env.locals.zone
+
   # =========================================================================
-  # CATATAN SETUP PRODUCTION (Cloud NAT Tuning):
+  # CATATAN SETUP PRODUCTION (NAT Gateway Tuning):
   # =========================================================================
-  # Jika men-deploy ke lingkungan Production, tambahkan/aktifkan nilai ini di inputs:
-  #   enable_dynamic_port_allocation = true
-  #   min_ports_per_vm               = 1024
+  # Jika terjadi SNAT port exhaustion di Production, tambahkan public IP /
+  # public IP prefix ke NAT gateway (1 IP = 64.512 SNAT port).
   # =========================================================================
 
-  # --- Subnet primary CIDR ---
-  subnet_cidr = "10.10.0.0/24"
+  # --- Address space ---
+  # Pod (10.20.0.0/16) & service (10.30.0.0/20) AKS memakai CIDR overlay di unit aks —
+  # JANGAN overlap dengan vnet_cidr.
+  vnet_cidr            = "10.10.0.0/16"
+  subnet_cidr          = "10.10.0.0/24" # VM (Jenkins)
+  postgres_subnet_cidr = "10.10.1.0/24" # delegated PostgreSQL Flexible Server
+  aks_subnet_cidr      = "10.10.4.0/22" # node AKS (/22 = 1024 IP)
 
-  # --- Secondary ranges untuk GKE pods & services ---
-  # Dipakai oleh module GKE (dependency → ambil range name dari output network)
-  subnet_pods_range_name     = "gke-pods"
-  subnet_pods_cidr           = "10.20.0.0/16"   # /16 = 65536 IPs (cegah IP exhaustion)
-  subnet_services_range_name = "gke-services"
-  subnet_services_cidr       = "10.30.0.0/20"   # /20 = 4096 IPs (jarang habis)
+  postgres_private_dns_zone_name = "course-dev.private.postgres.database.azure.com"
 
-  # --- Webhook firewall (GitHub webhook IPs + IP admin) ---
+  # --- SSH (padanan IAP) ---
+  # Isi IP publik admin agar bisa SSH/Ansible ke VM. Kosong = SSH tertutup.
+  ssh_allowed_cidrs = [
+    # "YOUR_PUBLIC_IP/32",  # ← GANTI dengan IP admin kamu (curl ifconfig.me)
+  ]
+
+  # --- Webhook NSG rule (GitHub webhook IPs + IP admin) ---
   # Ambil dari https://api.github.com/meta → hooks
   # Tambah IP admin kamu untuk akses Jenkins UI via HTTPS
   webhook_allowed_cidrs = [
-    "140.82.112.0/20",   # GitHub hooks
-    "185.199.108.0/22",  # GitHub hooks
-    "192.30.252.0/22",   # GitHub hooks
+    "140.82.112.0/20",  # GitHub hooks
+    "185.199.108.0/22", # GitHub hooks
+    "192.30.252.0/22",  # GitHub hooks
     # "YOUR_PUBLIC_IP/32",  # ← GANTI dengan IP admin kamu
   ]
 
-  # --- Labels ---
-  labels = {
+  # --- Tags ---
+  tags = {
     managed_by  = "terraform"
     course      = "be-a-devops-employee"
     environment = "dev"

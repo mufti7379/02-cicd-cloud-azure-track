@@ -1,14 +1,24 @@
 # CONTOH backend untuk STAGE BERIKUTNYA (mis. 01-infra), BUKAN untuk stage 00 ini.
-# Salin pola ini ke `backend.tf` di stage berikutnya setelah bucket state dibuat.
+# Salin pola ini ke `backend.tf` di stage berikutnya setelah storage account state dibuat.
 #
-# - `bucket`  : isi dengan output `state_bucket_name` dari stage 00.
-# - `prefix`  : path unik per stage/environment agar state tidak bertabrakan.
-# - `impersonate_service_account`: output `terraform_service_account_email` dari stage 00.
+# - `subscription_id`      : output `subscription_id` dari stage 00.
+# - `resource_group_name`  : output `resource_group_name` dari stage 00.
+# - `storage_account_name` : output `state_storage_account_name` dari stage 00.
+# - `container_name`       : output `state_container_name` dari stage 00.
+# - `key`                  : path unik per stage/environment agar state tidak bertabrakan.
+# - `use_azuread_auth`     : akses state via Entra ID (RBAC), bukan access key.
+#
+# Autentikasi (padanan impersonation GCP):
+# - Dari laptop: `az login` (user sudah diberi Storage Blob Data Contributor oleh stage 00).
+# - Dari Jenkins/CI: tambahkan `use_msi = true` dan `client_id = <terraform_identity_client_id>`.
 #
 # terraform {
-#   backend "gcs" {
-#     bucket                      = "GANTI-dengan-state_bucket_name"
-#     prefix                      = "01-infra/dev/"
-#     impersonate_service_account = "sa-terraform@GANTI-project-id.iam.gserviceaccount.com"
+#   backend "azurerm" {
+#     subscription_id      = "GANTI-dengan-subscription_id"
+#     resource_group_name  = "rg-bootstrap"
+#     storage_account_name = "GANTI-dengan-state_storage_account_name"
+#     container_name       = "tfstate"
+#     key                  = "01-infra/dev/terraform.tfstate"
+#     use_azuread_auth     = true
 #   }
 # }

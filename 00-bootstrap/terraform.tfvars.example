@@ -1,0 +1,10 @@
+# Salin ke terraform.tfvars dan isi nilai milikmu (JANGAN commit terraform.tfvars)
+# Cek subscription ID: az account show --query id -o tsv
+subscription_id            = "00000000-0000-0000-0000-000000000000"
+location                   = "southeastasia"
+state_storage_account_name = "yourtfstatename" # 3-24 huruf kecil/angka, unik global
+
+# Opsional: object ID Entra tambahan yang boleh baca/tulis state.
+# User yang menjalankan bootstrap otomatis mendapat akses.
+# Cek object ID: az ad signed-in-user show --query id -o tsv
+# state_data_contributors = ["00000000-0000-0000-0000-000000000000"]

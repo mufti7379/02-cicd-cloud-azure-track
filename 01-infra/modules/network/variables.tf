@@ -1,83 +1,119 @@
-variable "project_id" {
+variable "resource_group_name" {
   type        = string
-  description = "ID project GCP."
+  description = "Nama resource group tempat resource jaringan dibuat."
 }
 
-variable "region" {
+variable "location" {
   type        = string
-  description = "Region GCP untuk subnet dan NAT."
+  description = "Region Azure untuk VNet dan NAT."
+}
+
+variable "zone" {
+  type        = string
+  description = "Availability zone untuk NAT Gateway + IP-nya (samakan dengan zone node AKS). Kosongkan untuk non-zonal."
+  default     = ""
 }
 
 variable "network_name" {
   type        = string
-  description = "Nama VPC network."
-  default     = "vpc-main"
+  description = "Nama VNet."
+  default     = "vnet-main"
+}
+
+variable "vnet_cidr" {
+  type        = string
+  description = "Address space VNet. Harus mencakup semua subnet di bawah dan TIDAK overlap dengan pod/service CIDR AKS."
+  default     = "10.10.0.0/16"
 }
 
 variable "subnet_name" {
   type        = string
-  description = "Nama subnet."
-  default     = "subnet-main"
+  description = "Nama subnet VM."
+  default     = "snet-main"
 }
 
 variable "subnet_cidr" {
   type        = string
-  description = "CIDR range untuk subnet."
+  description = "CIDR range untuk subnet VM."
   default     = "10.10.0.0/24"
 }
 
-variable "subnet_pods_range_name" {
+variable "aks_subnet_name" {
   type        = string
-  description = "Nama secondary range untuk GKE pods."
-  default     = "gke-pods"
+  description = "Nama subnet node AKS."
+  default     = "snet-aks"
 }
 
-variable "subnet_pods_cidr" {
+variable "aks_subnet_cidr" {
   type        = string
-  description = "CIDR secondary range pods. /16 = 65536 IPs (cegah IP exhaustion saat scale)."
-  default     = "10.20.0.0/16"
+  description = "CIDR subnet node AKS. Dengan CNI Overlay hanya node yang memakai IP di sini; /22 = 1024 IP."
+  default     = "10.10.4.0/22"
 }
 
-variable "subnet_services_range_name" {
+variable "postgres_subnet_name" {
   type        = string
-  description = "Nama secondary range untuk GKE services."
-  default     = "gke-services"
+  description = "Nama subnet delegated untuk PostgreSQL Flexible Server."
+  default     = "snet-postgres"
 }
 
-variable "subnet_services_cidr" {
+variable "postgres_subnet_cidr" {
   type        = string
-  description = "CIDR secondary range services. /20 = 4096 IPs (jarang habis)."
-  default     = "10.30.0.0/20"
+  description = "CIDR subnet delegated PostgreSQL (padanan reserved range Private Service Access)."
+  default     = "10.10.1.0/24"
 }
 
-variable "router_name" {
+variable "postgres_private_dns_zone_name" {
   type        = string
-  description = "Nama Cloud Router."
-  default     = "router-main"
+  description = "Nama Private DNS zone PostgreSQL. Wajib berakhiran .postgres.database.azure.com."
+  default     = "course.private.postgres.database.azure.com"
 }
 
 variable "nat_name" {
   type        = string
-  description = "Nama Cloud NAT."
+  description = "Nama NAT Gateway."
   default     = "nat-main"
 }
 
 variable "nat_ip_name" {
   type        = string
-  description = "Nama reserved static IP address untuk Cloud NAT."
-  default     = "address-nat-main"
+  description = "Nama reserved static public IP untuk NAT Gateway."
+  default     = "pip-nat-main"
 }
 
-variable "firewall_iap_name" {
+variable "nsg_name" {
   type        = string
-  description = "Nama firewall rule untuk IAP SSH."
-  default     = "allow-iap-ssh"
+  description = "Nama Network Security Group untuk subnet VM."
+  default     = "nsg-main"
+}
+
+variable "asg_ssh_name" {
+  type        = string
+  description = "Nama Application Security Group untuk VM yang boleh di-SSH (padanan network tag allow-iap-ssh)."
+  default     = "asg-ssh"
+}
+
+variable "asg_webhook_name" {
+  type        = string
+  description = "Nama Application Security Group untuk VM penerima webhook (padanan network tag allow-webhook)."
+  default     = "asg-webhook"
+}
+
+variable "firewall_ssh_name" {
+  type        = string
+  description = "Nama NSG rule untuk SSH."
+  default     = "allow-ssh"
 }
 
 variable "firewall_webhook_name" {
   type        = string
-  description = "Nama firewall rule untuk GitHub webhook (HTTPS 443)."
+  description = "Nama NSG rule untuk GitHub webhook (HTTPS 443)."
   default     = "allow-github-webhook"
+}
+
+variable "ssh_allowed_cidrs" {
+  type        = list(string)
+  description = "CIDR yang boleh SSH (port 22) ke VM di ASG ssh (padanan range IAP). Kosong = SSH tertutup."
+  default     = []
 }
 
 variable "webhook_allowed_cidrs" {
@@ -93,20 +129,14 @@ variable "webhook_allowed_cidrs" {
   ]
 }
 
-variable "labels" {
+variable "tags" {
   type        = map(string)
-  description = "Label umum (tidak dipakai oleh semua resource, tersedia untuk konsistensi)."
+  description = "Tag umum."
   default     = {}
 }
 
 variable "enable_destroy_protection" {
   type        = bool
-  description = "Toggle untuk prevent_destroy lifecycle pada VPC dan subnet. Default true untuk produksi. Set false HANYA untuk teardown yang disengaja (harus edit kode + apply terlebih dahulu)."
+  description = "Toggle untuk prevent_destroy lifecycle pada VNet dan subnet. Default true untuk produksi. Set false HANYA untuk teardown yang disengaja (harus edit kode + apply terlebih dahulu)."
   default     = true
-}
-
-variable "psa_range_name" {
-  type        = string
-  description = "Nama reserved IP range untuk Private Service Access (CloudSQL, dll)."
-  default     = "google-managed-services-range"
 }

@@ -1,8 +1,0 @@
-# Salin ke terraform.tfvars dan isi nilai milikmu (JANGAN commit terraform.tfvars)
-# Salin ke terraform.tfvars dan isi nilai milikmu (JANGAN commit terraform.tfvars)
-project_id        = "your-gcp-project-id"
-region            = "asia-southeast1"
-state_bucket_name = "your-unique-tf-state-bucket-name"
-
-# Opsional: identitas yang boleh meng-impersonate SA Terraform.
-# impersonator_members = ["user:kamu@gmail.com"]

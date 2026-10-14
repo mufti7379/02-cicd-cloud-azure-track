@@ -1,16 +1,17 @@
-variable "project_id" {
+variable "resource_group_name" {
   type        = string
-  description = "ID project GCP."
+  description = "Nama resource group tempat VM dibuat (juga scope role identity VM)."
 }
 
-variable "region" {
+variable "location" {
   type        = string
-  description = "Region GCP (untuk reserved IP address)."
+  description = "Region Azure untuk VM dan IP."
 }
 
 variable "zone" {
   type        = string
-  description = "Zone GCP untuk instance. ⚠️ TIDAK BISA diubah setelah apply (force recreate)."
+  description = "Availability zone VM (1/2/3). Kosongkan untuk non-zonal. ⚠️ TIDAK BISA diubah setelah apply (force recreate)."
+  default     = ""
 }
 
 variable "instance_name" {
@@ -19,44 +20,49 @@ variable "instance_name" {
   default     = "vm-jenkins"
 }
 
-variable "machine_type" {
+variable "vm_size" {
   type        = string
-  description = "Machine type untuk VM. Bisa diubah setelah apply (VM akan stop sementara)."
-  default     = "e2-medium"
+  description = "Ukuran VM. Bisa diubah setelah apply (VM restart). Catatan: seri B tidak mendukung Spot."
+  default     = "Standard_D2as_v5"
 }
 
 variable "image" {
-  type        = string
-  description = "Boot disk image. ⚠️ TIDAK BISA diubah setelah apply (force recreate disk)."
-  default     = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
+  type = object({
+    publisher = string
+    offer     = string
+    sku       = string
+    version   = string
+  })
+  description = "Marketplace image untuk OS disk. ⚠️ TIDAK BISA diubah setelah apply (force recreate)."
+  default = {
+    publisher = "Canonical"
+    offer     = "ubuntu-24_04-lts"
+    sku       = "server"
+    version   = "latest"
+  }
 }
 
 variable "disk_size_gb" {
   type        = number
-  description = "Ukuran boot disk dalam GB. Bisa diperbesar (bukan dikecilkan) tanpa recreate."
-  default     = 20
+  description = "Ukuran OS disk dalam GB (minimal 30 untuk image Ubuntu). Bisa diperbesar (bukan dikecilkan)."
+  default     = 30
 }
 
 variable "disk_type" {
   type        = string
-  description = "Tipe disk. pd-standard = HDD (murah), pd-ssd = SSD, pd-balanced = balanced. ⚠️ TIDAK BISA diubah setelah apply."
-  default     = "pd-standard"
+  description = "Tipe disk. Standard_LRS = HDD (murah), StandardSSD_LRS = SSD standar, Premium_LRS = SSD premium. ⚠️ TIDAK BISA diubah setelah apply."
+  default     = "Standard_LRS"
 }
 
 variable "preemptible" {
   type        = bool
-  description = "Spot/preemptible VM (60-91% lebih murah). ⚠️ TIDAK BISA diubah setelah apply (force recreate). Spot VM bisa di-preempt kapan saja (maks 24 jam)."
+  description = "Spot VM (jauh lebih murah). ⚠️ TIDAK BISA diubah setelah apply (force recreate). Spot VM bisa di-evict kapan saja."
   default     = true
 }
 
-variable "network_self_link" {
+variable "subnet_id" {
   type        = string
-  description = "Self-link network tempat VM ditempatkan. ⚠️ TIDAK BISA diubah setelah apply."
-}
-
-variable "subnet_self_link" {
-  type        = string
-  description = "Self-link subnet tempat VM ditempatkan. ⚠️ TIDAK BISA diubah setelah apply."
+  description = "Resource ID subnet tempat VM ditempatkan. ⚠️ TIDAK BISA diubah setelah apply."
 }
 
 variable "enable_public_ip" {
@@ -65,38 +71,46 @@ variable "enable_public_ip" {
   default     = true
 }
 
-variable "vm_sa_account_id" {
-  type        = string
-  description = "Account ID untuk dedicated Service Account VM. Harus unik per project."
-  default     = "sa-vm-instance"
+variable "application_security_group_ids" {
+  type        = list(string)
+  description = "Resource ID ASG tempat NIC VM bergabung (padanan network tags; harus match ASG di NSG rule module network)."
+  default     = []
 }
 
-variable "vm_sa_roles" {
+variable "vm_identity_name" {
+  type        = string
+  description = "Nama dedicated user-assigned managed identity VM. Harus unik per resource group."
+  default     = "id-vm-instance"
+}
+
+variable "vm_identity_roles" {
   type        = list(string)
-  description = "Role IAM untuk dedicated SA VM (least privilege). Sesuaikan per use-case VM."
+  description = "Role Azure untuk identity VM di scope resource group (least privilege). Sesuaikan per use-case VM."
   default = [
-    "roles/logging.logWriter",
-    "roles/monitoring.metricWriter",
+    "Monitoring Metrics Publisher",
   ]
 }
 
-variable "network_tags" {
-  type        = list(string)
-  description = "Network tags untuk VM (harus match dengan firewall target_tags di module network)."
-  default     = ["allow-iap-ssh"]
+variable "admin_username" {
+  type        = string
+  description = "Username admin Linux (dipakai Ansible). ⚠️ TIDAK BISA diubah setelah apply."
+  default     = "azureuser"
 }
 
-variable "metadata" {
-  type        = map(string)
-  description = "Metadata key-value pairs untuk VM. Set enable-oslogin=TRUE untuk OS Login (production), FALSE untuk SSH key tradisional."
-  default = {
-    enable-oslogin = "TRUE"
-  }
+variable "admin_ssh_public_key" {
+  type        = string
+  description = "Isi SSH public key (RSA atau ED25519) untuk admin_username. ⚠️ TIDAK BISA diubah setelah apply."
 }
 
-variable "labels" {
+variable "enable_entra_ssh_login" {
+  type        = bool
+  description = "Aktifkan login SSH via Entra ID (padanan OS Login GCP). TRUE = production-grade, audit trail; FALSE = SSH key biasa."
+  default     = false
+}
+
+variable "tags" {
   type        = map(string)
-  description = "Label untuk VM dan resources terkait."
+  description = "Tag untuk VM dan resources terkait."
   default     = {}
 }
 
@@ -112,13 +126,13 @@ variable "enable_destroy_protection" {
 
 variable "enable_backup" {
   type        = bool
-  description = "Aktifkan snapshot backup schedule untuk boot disk VM. Set false untuk lab (hemat biaya), true untuk production."
+  description = "Aktifkan Azure Backup untuk VM. Set false untuk lab (hemat biaya), true untuk production."
   default     = false
 }
 
 variable "backup_frequency" {
   type        = string
-  description = "Frekuensi backup: 'daily', 'weekly', atau 'hourly'."
+  description = "Frekuensi backup: 'daily', 'weekly', atau 'hourly' (hourly memakai Enhanced policy)."
   default     = "daily"
 
   validation {
@@ -129,14 +143,8 @@ variable "backup_frequency" {
 
 variable "backup_start_time" {
   type        = string
-  description = "Jam mulai backup (format HH:MM, UTC). Default 02:00 UTC (pagi, traffic rendah)."
+  description = "Jam mulai backup (format HH:MM, UTC, kelipatan 30 menit). Default 02:00 UTC (pagi, traffic rendah)."
   default     = "02:00"
-}
-
-variable "backup_days_in_cycle" {
-  type        = number
-  description = "Interval hari untuk daily schedule (1 = setiap hari, 2 = setiap 2 hari, dst). Hanya berlaku jika backup_frequency = 'daily'."
-  default     = 1
 }
 
 variable "backup_day_of_week" {
@@ -152,12 +160,22 @@ variable "backup_day_of_week" {
 
 variable "backup_hours_in_cycle" {
   type        = number
-  description = "Interval jam untuk hourly schedule (mis. 6 = setiap 6 jam). Hanya berlaku jika backup_frequency = 'hourly'."
+  description = "Interval jam untuk hourly schedule (4, 6, 8, atau 12). Hanya berlaku jika backup_frequency = 'hourly'."
   default     = 6
+
+  validation {
+    condition     = contains([4, 6, 8, 12], var.backup_hours_in_cycle)
+    error_message = "backup_hours_in_cycle harus 4, 6, 8, atau 12."
+  }
 }
 
 variable "backup_retention_days" {
   type        = number
-  description = "Berapa hari snapshot disimpan sebelum auto-delete. Default 7 hari."
+  description = "Berapa hari recovery point disimpan (minimal 7). Untuk weekly dibulatkan ke atas per minggu."
   default     = 7
+
+  validation {
+    condition     = var.backup_retention_days >= 7
+    error_message = "backup_retention_days minimal 7 (batas Azure Backup)."
+  }
 }
